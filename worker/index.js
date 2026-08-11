@@ -94,7 +94,12 @@ export default {
     try {
       if (url.pathname === "/api/login" && request.method === "POST") {
         const { email, senha } = await request.json();
-        if (email !== env.ADMIN_EMAIL || senha !== env.ADMIN_SENHA) {
+        const usuarios = [
+          { email: env.ADMIN_EMAIL, senha: env.ADMIN_SENHA },
+          { email: env.ADMIN_EMAIL2, senha: env.ADMIN_SENHA2 },
+        ].filter((u) => u.email);
+        const valido = usuarios.some((u) => u.email === email && u.senha === senha);
+        if (!valido) {
           return jsonResponse({ erro: "E-mail ou senha inválidos." }, 401, origin);
         }
         const token = await assinarJWT({ sub: email, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12 }, env.JWT_SECRET);
