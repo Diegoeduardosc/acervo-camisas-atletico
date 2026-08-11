@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acervo de Camisas — Atlético</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%230a0a0a%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22 fill=%22white%22>🐔</text></svg>">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<style>
+:root{
+  --preto:#0a0a0a;
+  --preto2:#161616;
+  --branco:#ffffff;
+  --cinza-claro:#f4f4f5;
+  --cinza:#8a8a8e;
+  --borda:#e4e4e7;
+  --sombra:0 2px 10px rgba(0,0,0,.08);
+  --sombra-lg:0 12px 32px rgba(0,0,0,.18);
+  --raio:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--cinza-claro);
+  color:var(--preto);
+  min-height:100vh;
+}
+header{
+  background:repeating-linear-gradient(90deg,var(--preto) 0 28px,var(--branco) 28px 56px);
+  padding:0;
+  box-shadow:var(--sombra);
+  position:sticky;top:0;z-index:20;
+}
+header .bar{
+  background:rgba(10,10,10,.92);
+  backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;
+  color:#fff;
+  gap:12px;flex-wrap:wrap;
+}
+header h1{font-size:1.15rem;font-weight:700;letter-spacing:.3px}
+header h1 span{opacity:.65;font-weight:400}
+.auth-box{display:flex;align-items:center;gap:10px;font-size:.85rem}
+.auth-box .email{opacity:.75;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+button{
+  font:inherit;cursor:pointer;border:none;border-radius:9px;
+  padding:9px 16px;font-weight:600;transition:.15s;
+}
+.btn-primary{background:#fff;color:var(--preto)}
+.btn-primary:hover{background:#e8e8e8}
+.btn-ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.35)}
+.btn-ghost:hover{background:rgba(255,255,255,.12)}
+.btn-danger{background:#c0392b;color:#fff}
+.btn-danger:hover{background:#a5301f}
+main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px}
+.toolbar h2{font-size:1.1rem;color:var(--preto2)}
+.toolbar .count{color:var(--cinza);font-size:.85rem;font-weight:500}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:18px;
+}
+.card{
+  background:#fff;border-radius:var(--raio);overflow:hidden;
+  box-shadow:var(--sombra);border:1px solid var(--borda);
+  display:flex;flex-direction:column;
+  transition:transform .15s, box-shadow .15s;
+}
+.card:hover{transform:translateY(-3px);box-shadow:var(--sombra-lg)}
+.card .foto-wrap{
+  aspect-ratio:1/1;background:var(--cinza-claro);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  position:relative;
+}
+.card .foto-wrap img{width:100%;height:100%;object-fit:cover}
+.card .info{padding:14px 14px 16px;flex:1;display:flex;flex-direction:column;gap:4px}
+.card .nome{font-weight:700;font-size:1rem}
+.card .desc{color:var(--cinza);font-size:.85rem;line-height:1.4;flex:1}
+.card .acoes{display:flex;gap:8px;padding:0 14px 14px}
+.card .acoes button{flex:1;padding:7px 10px;font-size:.8rem}
+.icon-btn{background:var(--cinza-claro);color:var(--preto)}
+.icon-btn:hover{background:#e6e6e8}
+.icon-btn.danger{color:#c0392b}
+.vazio{
+  text-align:center;padding:70px 20px;color:var(--cinza);
+}
+.vazio .emoji{font-size:2.4rem;margin-bottom:10px}
+.vazio button{margin-top:16px}
+
+/* login */
+.login-wrap{
+  max-width:380px;margin:70px auto;background:#fff;padding:32px 28px;
+  border-radius:var(--raio);box-shadow:var(--sombra-lg);border:1px solid var(--borda);
+  text-align:center;
+}
+.login-wrap .emoji{font-size:2.2rem;margin-bottom:6px}
+.login-wrap h2{margin-bottom:4px}
+.login-wrap p{color:var(--cinza);font-size:.85rem;margin-bottom:20px}
+.field{text-align:left;margin-bottom:14px}
+.field label{display:block;font-size:.8rem;font-weight:600;margin-bottom:5px;color:var(--preto2)}
+.field input{
+  width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:9px;font-size:.9rem;
+}
+.field input:focus{outline:2px solid var(--preto);outline-offset:1px}
+.erro{color:#c0392b;font-size:.8rem;min-height:18px;margin-bottom:8px}
+.login-wrap .btn-primary{background:var(--preto);color:#fff;width:100%}
+.login-wrap .btn-primary:hover{background:#000}
+
+/* modal */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);
+  display:none;align-items:center;justify-content:center;z-index:50;padding:16px;
+}
+.overlay.aberto{display:flex}
+.modal{
+  background:#fff;border-radius:var(--raio);max-width:440px;width:100%;
+  padding:26px;box-shadow:var(--sombra-lg);max-height:92vh;overflow-y:auto;
+}
+.modal h3{margin-bottom:16px}
+.drop-zone{
+  border:2px dashed var(--borda);border-radius:12px;
+  aspect-ratio:1/1;max-height:220px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:var(--cinza);cursor:pointer;overflow:hidden;position:relative;margin-bottom:16px;
+  background:var(--cinza-claro);
+}
+.drop-zone img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.drop-zone .placeholder{font-size:.85rem;text-align:center;padding:10px}
+.drop-zone .placeholder .emoji{font-size:1.8rem;display:block;margin-bottom:6px}
+.modal-acoes{display:flex;gap:10px;margin-top:6px}
+.modal-acoes button{flex:1}
+.btn-secundario{background:var(--cinza-claro);color:var(--preto)}
+.btn-secundario:hover{background:#e6e6e8}
+.hidden{display:none !important}
+.toast{
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  background:var(--preto);color:#fff;padding:11px 20px;border-radius:9px;
+  font-size:.85rem;box-shadow:var(--sombra-lg);z-index:100;opacity:0;pointer-events:none;
+  transition:opacity .2s, bottom .2s;
+}
+.toast.show{opacity:1;bottom:32px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <h1>🐔 Acervo de Camisas <span>· Atlético</span></h1>
+    <div class="auth-box" id="authBox"></div>
+  </div>
+</header>
+
+<main>
+  <div id="loginView" class="hidden">
+    <div class="login-wrap">
+      <div class="emoji">🔒</div>
+      <h2>Área do colecionador</h2>
+      <p>Entre para adicionar ou editar camisas. A galeria abaixo é pública.</p>
+      <form id="loginForm">
+        <div class="field">
+          <label>E-mail</label>
+          <input type="email" id="loginEmail" required autocomplete="username">
+        </div>
+        <div class="field">
+          <label>Senha</label>
+          <input type="password" id="loginSenha" required autocomplete="current-password">
+        </div>
+        <div class="erro" id="loginErro"></div>
+        <button type="submit" class="btn-primary">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <h2>Galeria</h2>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="count" id="contador"></span>
+      <button class="btn-primary hidden" id="btnAdicionar" style="background:var(--preto);color:#fff">+ Nova camisa</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="vazio hidden" id="vazio">
+    <div class="emoji">👕</div>
+    <p>Nenhuma camisa cadastrada ainda.</p>
+  </div>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="modalTitulo">Nova camisa</h3>
+    <form id="formCamisa">
+      <div class="drop-zone" id="dropZone">
+        <img id="previewImg" class="hidden">
+        <div class="placeholder" id="dropPlaceholder">
+          <span class="emoji">📷</span>
+          Clique para escolher uma foto
+        </div>
+      </div>
+      <input type="file" id="inputFoto" accept="image/*" class="hidden">
+      <div class="field">
+        <label>Nome da camisa</label>
+        <input type="text" id="inputNome" placeholder="Ex: Atlético 2013 - Libertadores" required>
+      </div>
+      <div class="field">
+        <label>Descrição</label>
+        <input type="text" id="inputDescricao" placeholder="Ex: Camisa titular, temporada do título, autografada">
+      </div>
+      <div class="erro" id="formErro"></div>
+      <div class="modal-acoes">
+        <button type="button" class="btn-secundario" id="btnCancelar">Cancelar</button>
+        <button type="submit" class="btn-primary" id="btnSalvar" style="background:var(--preto);color:#fff">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// CONFIGURAÇÃO DO FIREBASE
+// Substitua pelos dados do seu projeto (console.firebase.google.com)
+// ============================================================
+const FIREBASE_CONFIG = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:      "YOUR_PROJECT_ID.firebasestorage.app",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+const FB_READY = FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID";
+
+let db, auth, storage, currentUser = null;
+let arquivoSelecionado = null;
+let editandoId = null;
+let editandoStoragePath = null;
+
+if (FB_READY) {
+  firebase.initializeApp(FIREBASE_CONFIG);
+  auth = firebase.auth();
+  db = firebase.firestore();
+  storage = firebase.storage();
+} else {
+  console.warn("Firebase não configurado. Preencha FIREBASE_CONFIG em index.html.");
+}
+
+const $ = (id) => document.getElementById(id);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ---------- AUTENTICAÇÃO ----------
+
+function renderAuthBox() {
+  const box = $('authBox');
+  if (currentUser) {
+    box.innerHTML = `
+      <span class="email">${currentUser.email}</span>
+      <button class="btn-ghost" id="btnSair">Sair</button>
+    `;
+    $('btnSair').onclick = () => auth.signOut();
+    $('btnAdicionar').classList.remove('hidden');
+    $('loginView').classList.add('hidden');
+  } else {
+    box.innerHTML = `<button class="btn-ghost" id="btnEntrar">Entrar</button>`;
+    $('btnEntrar').onclick = () => {
+      $('loginView').classList.toggle('hidden');
+    };
+    $('btnAdicionar').classList.add('hidden');
+  }
+}
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('loginErro').textContent = '';
+  try {
+    await auth.signInWithEmailAndPassword($('loginEmail').value.trim(), $('loginSenha').value);
+    $('loginView').classList.add('hidden');
+  } catch (err) {
+    $('loginErro').textContent = 'E-mail ou senha inválidos.';
+  }
+});
+
+if (FB_READY) {
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+    renderAuthBox();
+    renderCardActions();
+  });
+} else {
+  renderAuthBox();
+}
+
+// ---------- GALERIA ----------
+
+let camisas = [];
+
+function carregarGaleria() {
+  if (!FB_READY) return;
+  db.collection('camisas').orderBy('criadoEm', 'desc').onSnapshot((snap) => {
+    camisas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderGrid();
+  }, (err) => {
+    console.error('Erro ao carregar galeria:', err);
+    toast('Erro ao carregar a galeria.');
+  });
+}
+
+function renderGrid() {
+  const grid = $('grid');
+  const vazio = $('vazio');
+  $('contador').textContent = camisas.length ? `${camisas.length} camisa${camisas.length > 1 ? 's' : ''}` : '';
+
+  if (!camisas.length) {
+    grid.innerHTML = '';
+    vazio.classList.remove('hidden');
+    return;
+  }
+  vazio.classList.add('hidden');
+
+  grid.innerHTML = camisas.map(c => `
+    <div class="card" data-id="${c.id}">
+      <div class="foto-wrap"><img src="${c.imageUrl}" alt="${escapeHtml(c.nome)}" loading="lazy"></div>
+      <div class="info">
+        <div class="nome">${escapeHtml(c.nome)}</div>
+        ${c.descricao ? `<div class="desc">${escapeHtml(c.descricao)}</div>` : ''}
+      </div>
+      <div class="acoes admin-only ${currentUser ? '' : 'hidden'}">
+        <button class="icon-btn" data-editar="${c.id}">Editar</button>
+        <button class="icon-btn danger" data-excluir="${c.id}">Excluir</button>
+      </div>
+    </div>
+  `).join('');
+
+  grid.querySelectorAll('[data-editar]').forEach(btn =>
+    btn.onclick = () => abrirModal(camisas.find(c => c.id === btn.dataset.editar)));
+  grid.querySelectorAll('[data-excluir]').forEach(btn =>
+    btn.onclick = () => excluirCamisa(btn.dataset.excluir));
+}
+
+function renderCardActions() {
+  document.querySelectorAll('.admin-only').forEach(el =>
+    el.classList.toggle('hidden', !currentUser));
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// ---------- MODAL / FORMULÁRIO ----------
+
+$('btnAdicionar').onclick = () => abrirModal(null);
+$('btnCancelar').onclick = fecharModal;
+$('overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') fecharModal(); });
+$('dropZone').onclick = () => $('inputFoto').click();
+
+function abrirModal(camisa) {
+  editandoId = camisa ? camisa.id : null;
+  editandoStoragePath = camisa ? camisa.storagePath : null;
+  arquivoSelecionado = null;
+  $('modalTitulo').textContent = camisa ? 'Editar camisa' : 'Nova camisa';
+  $('inputNome').value = camisa ? camisa.nome : '';
+  $('inputDescricao').value = camisa ? camisa.descricao || '' : '';
+  $('formErro').textContent = '';
+  $('inputFoto').value = '';
+
+  if (camisa) {
+    $('previewImg').src = camisa.imageUrl;
+    $('previewImg').classList.remove('hidden');
+    $('dropPlaceholder').classList.add('hidden');
+  } else {
+    $('previewImg').classList.add('hidden');
+    $('dropPlaceholder').classList.remove('hidden');
+  }
+  $('overlay').classList.add('aberto');
+}
+
+function fecharModal() {
+  $('overlay').classList.remove('aberto');
+}
+
+$('inputFoto').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  arquivoSelecionado = file;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    $('previewImg').src = ev.target.result;
+    $('previewImg').classList.remove('hidden');
+    $('dropPlaceholder').classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+});
+
+function redimensionarImagem(file, maxLado = 1280, qualidade = 0.82) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxLado || height > maxLado) {
+        if (width > height) { height = Math.round(height * maxLado / width); width = maxLado; }
+        else { width = Math.round(width * maxLado / height); height = maxLado; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao processar imagem')), 'image/jpeg', qualidade);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível ler a imagem')); };
+    img.src = url;
+  });
+}
+
+$('formCamisa').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!currentUser) { toast('Entre para salvar.'); return; }
+
+  const nome = $('inputNome').value.trim();
+  const descricao = $('inputDescricao').value.trim();
+  if (!nome) return;
+  if (!editandoId && !arquivoSelecionado) {
+    $('formErro').textContent = 'Escolha uma foto da camisa.';
+    return;
+  }
+
+  $('btnSalvar').disabled = true;
+  $('btnSalvar').textContent = 'Salvando...';
+
+  try {
+    let imageUrl = null, storagePath = null;
+
+    if (arquivoSelecionado) {
+      const blob = await redimensionarImagem(arquivoSelecionado);
+      storagePath = `camisas/${currentUser.uid}/${Date.now()}.jpg`;
+      const ref = storage.ref(storagePath);
+      await ref.put(blob, { contentType: 'image/jpeg' });
+      imageUrl = await ref.getDownloadURL();
+    }
+
+    if (editandoId) {
+      const dados = { nome, descricao };
+      if (imageUrl) { dados.imageUrl = imageUrl; dados.storagePath = storagePath; }
+      await db.collection('camisas').doc(editandoId).update(dados);
+      if (imageUrl && editandoStoragePath) {
+        storage.ref(editandoStoragePath).delete().catch(() => {});
+      }
+      toast('Camisa atualizada.');
+    } else {
+      await db.collection('camisas').add({
+        nome, descricao, imageUrl, storagePath,
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+        criadoPor: currentUser.uid
+      });
+      toast('Camisa adicionada ao acervo.');
+    }
+    fecharModal();
+  } catch (err) {
+    console.error(err);
+    $('formErro').textContent = 'Erro ao salvar. Tente novamente.';
+  } finally {
+    $('btnSalvar').disabled = false;
+    $('btnSalvar').textContent = 'Salvar';
+  }
+});
+
+async function excluirCamisa(id) {
+  const camisa = camisas.find(c => c.id === id);
+  if (!camisa) return;
+  if (!confirm(`Excluir "${camisa.nome}" do acervo?`)) return;
+  try {
+    await db.collection('camisas').doc(id).delete();
+    if (camisa.storagePath) storage.ref(camisa.storagePath).delete().catch(() => {});
+    toast('Camisa excluída.');
+  } catch (err) {
+    console.error(err);
+    toast('Erro ao excluir.');
+  }
+}
+
+// ---------- INIT ----------
+
+if (!FB_READY) {
+  $('grid').innerHTML = '';
+  $('vazio').classList.remove('hidden');
+  $('vazio').querySelector('p').textContent = 'Firebase ainda não configurado — edite FIREBASE_CONFIG em index.html.';
+} else {
+  carregarGaleria();
+}
+</script>
+</body>
+</html>
