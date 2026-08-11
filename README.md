@@ -1,58 +1,40 @@
 # Acervo de Camisas — Atlético
 
-Catálogo web para registrar a coleção de camisas do Atlético: foto, nome e descrição de cada peça. A galeria é pública; adicionar, editar e excluir camisas exige login.
+Catálogo web para registrar a coleção de camisas do Atlético: foto, nome e descrição de cada peça. A galeria é pública; adicionar, editar e excluir camisas exige um token de acesso.
 
 ## Stack
 
-Página única (`index.html`), sem build, usando Firebase:
+Página única (`index.html`), sem build e sem serviço externo — o próprio repositório GitHub funciona como banco de dados:
 
-- **Auth** — login por e-mail/senha (só o dono da coleção precisa de conta)
-- **Firestore** — dados de cada camisa (nome, descrição, link da foto)
-- **Storage** — armazenamento das fotos (redimensionadas no navegador antes do upload, até 1280px, para economizar espaço)
+- `data/camisas.json` — lista das camisas (nome, descrição, nome do arquivo da foto)
+- `fotos/` — as fotos (redimensionadas no navegador para até 1280px antes do envio, para economizar espaço)
+- Leitura da galeria: pública, direto de `raw.githubusercontent.com` (sem precisar de login)
+- Escrita (adicionar/editar/excluir): feita via API do GitHub, autenticada com um token pessoal
 
-## Configurar
+Sem Firebase, sem cartão de crédito, sem plano pago.
 
-1. Crie um projeto em [console.firebase.google.com](https://console.firebase.google.com).
-2. Ative:
-   - **Authentication** → método "E-mail/senha" → crie manualmente o usuário do colecionador (não há tela de cadastro no site).
-   - **Firestore Database** (modo produção).
-   - **Storage**.
-3. Em "Configurações do projeto" → copie as credenciais do app Web e cole em `FIREBASE_CONFIG` no topo do `<script>` de `index.html`.
-4. Aplique as regras de segurança abaixo.
+## Configurar o login (token de acesso)
 
-### Regras do Firestore
+Só quem vai gerenciar o acervo precisa disso — os visitantes não.
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /camisas/{doc} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-  }
-}
-```
+1. No GitHub, vá em **Settings → Developer settings → Personal access tokens → Fine-grained tokens** → **Generate new token**.
+2. Em "Repository access", escolha **Only select repositories** → selecione `acervo-camisas-atletico`.
+3. Em "Permissions" → "Repository permissions" → defina **Contents: Read and write**.
+4. Defina uma validade (ex: 1 ano) e gere o token.
+5. Copie o token (começa com `github_pat_...`) — ele só aparece uma vez.
+6. No site, clique em "Entrar" e cole o token.
 
-### Regras do Storage
-
-```
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /camisas/{allPaths=**} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-  }
-}
-```
+O token fica salvo apenas no navegador de quem faz login (`localStorage`), nunca no repositório. Se vazar, revogue em Settings → Developer settings a qualquer momento e gere um novo.
 
 ## Publicar (GitHub Pages)
 
-Repositório público → Settings → Pages → Deploy from branch → `main` / `/ (root)`.
+Settings → Pages → Deploy from branch → `main` / `/ (root)`. (Já está configurado neste repositório.)
 
 ## Uso
 
 - Sem login: qualquer visitante vê a galeria.
 - Com login: aparece o botão "+ Nova camisa" e as ações de editar/excluir em cada card.
+
+## Espaço
+
+GitHub recomenda manter repositórios abaixo de 1GB (tolera até ~5GB), com até 100MB por arquivo. Como as fotos são comprimidas para ~200–400KB cada, dá para catalogar milhares de camisas sem se aproximar do limite.

@@ -5,10 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Acervo de Camisas — Atlético</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%230a0a0a%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22 fill=%22white%22>🐔</text></svg>">
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <style>
 :root{
   --preto:#0a0a0a;
@@ -94,17 +90,19 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
 
 /* login */
 .login-wrap{
-  max-width:380px;margin:70px auto;background:#fff;padding:32px 28px;
+  max-width:400px;margin:70px auto;background:#fff;padding:32px 28px;
   border-radius:var(--raio);box-shadow:var(--sombra-lg);border:1px solid var(--borda);
   text-align:center;
 }
 .login-wrap .emoji{font-size:2.2rem;margin-bottom:6px}
 .login-wrap h2{margin-bottom:4px}
 .login-wrap p{color:var(--cinza);font-size:.85rem;margin-bottom:20px}
+.login-wrap p a{color:var(--preto)}
 .field{text-align:left;margin-bottom:14px}
 .field label{display:block;font-size:.8rem;font-weight:600;margin-bottom:5px;color:var(--preto2)}
 .field input{
   width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:9px;font-size:.9rem;
+  font-family:ui-monospace,Consolas,monospace;
 }
 .field input:focus{outline:2px solid var(--preto);outline-offset:1px}
 .erro{color:#c0392b;font-size:.8rem;min-height:18px;margin-bottom:8px}
@@ -142,6 +140,7 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
   background:var(--preto);color:#fff;padding:11px 20px;border-radius:9px;
   font-size:.85rem;box-shadow:var(--sombra-lg);z-index:100;opacity:0;pointer-events:none;
   transition:opacity .2s, bottom .2s;
+  max-width:90vw;text-align:center;
 }
 .toast.show{opacity:1;bottom:32px}
 </style>
@@ -160,18 +159,14 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
     <div class="login-wrap">
       <div class="emoji">🔒</div>
       <h2>Área do colecionador</h2>
-      <p>Entre para adicionar ou editar camisas. A galeria abaixo é pública.</p>
+      <p>Cole abaixo um token de acesso do GitHub para adicionar ou editar camisas. A galeria abaixo é pública para qualquer visitante.</p>
       <form id="loginForm">
         <div class="field">
-          <label>E-mail</label>
-          <input type="email" id="loginEmail" required autocomplete="username">
-        </div>
-        <div class="field">
-          <label>Senha</label>
-          <input type="password" id="loginSenha" required autocomplete="current-password">
+          <label>Token de acesso (GitHub)</label>
+          <input type="password" id="loginToken" placeholder="github_pat_..." required autocomplete="off">
         </div>
         <div class="erro" id="loginErro"></div>
-        <button type="submit" class="btn-primary">Entrar</button>
+        <button type="submit" class="btn-primary" id="btnLogin">Entrar</button>
       </form>
     </div>
   </div>
@@ -225,32 +220,23 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
 
 <script>
 // ============================================================
-// CONFIGURAÇÃO DO FIREBASE
-// Substitua pelos dados do seu projeto (console.firebase.google.com)
+// Repositório usado como banco de dados (data/camisas.json + fotos/)
 // ============================================================
-const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:      "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID"
-};
-const FB_READY = FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID";
+const GITHUB_OWNER = "Diegoeduardosc";
+const GITHUB_REPO = "acervo-camisas-atletico";
+const GITHUB_BRANCH = "main";
+const DATA_PATH = "data/camisas.json";
+const FOTOS_DIR = "fotos";
 
-let db, auth, storage, currentUser = null;
+const RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
+const API_BASE = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
+const TOKEN_KEY = "acervo_gh_token";
+
+let currentUser = null; // { login, token }
+let camisas = [];
 let arquivoSelecionado = null;
 let editandoId = null;
-let editandoStoragePath = null;
-
-if (FB_READY) {
-  firebase.initializeApp(FIREBASE_CONFIG);
-  auth = firebase.auth();
-  db = firebase.firestore();
-  storage = firebase.storage();
-} else {
-  console.warn("Firebase não configurado. Preencha FIREBASE_CONFIG em index.html.");
-}
+let editandoImagem = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -258,7 +244,90 @@ function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2600);
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ---------- helpers base64 / texto ----------
+
+function blobParaBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function textoParaBase64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  bytes.forEach(b => binary += String.fromCharCode(b));
+  return btoa(binary);
+}
+
+function base64ParaTexto(b64) {
+  const binary = atob(b64.replace(/\n/g, ''));
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// ---------- API do GitHub ----------
+
+async function ghFetch(path, options = {}) {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    ...(options.headers || {})
+  };
+  if (currentUser) headers.Authorization = `token ${currentUser.token}`;
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `Erro ${res.status} na API do GitHub`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+async function buscarArquivoDados() {
+  const dado = await ghFetch(`/contents/${DATA_PATH}?ref=${GITHUB_BRANCH}`);
+  return { sha: dado.sha, lista: JSON.parse(base64ParaTexto(dado.content)) };
+}
+
+async function salvarArquivoDados(lista, sha, mensagem) {
+  return ghFetch(`/contents/${DATA_PATH}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: mensagem,
+      content: textoParaBase64(JSON.stringify(lista, null, 2)),
+      sha, branch: GITHUB_BRANCH
+    })
+  });
+}
+
+async function enviarFoto(blob, nomeArquivo) {
+  const conteudo = await blobParaBase64(blob);
+  await ghFetch(`/contents/${FOTOS_DIR}/${nomeArquivo}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: `upload foto: ${nomeArquivo}`,
+      content: conteudo, branch: GITHUB_BRANCH
+    })
+  });
+}
+
+async function excluirFoto(nomeArquivo) {
+  try {
+    const meta = await ghFetch(`/contents/${FOTOS_DIR}/${nomeArquivo}?ref=${GITHUB_BRANCH}`);
+    await ghFetch(`/contents/${FOTOS_DIR}/${nomeArquivo}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ message: `remover foto: ${nomeArquivo}`, sha: meta.sha, branch: GITHUB_BRANCH })
+    });
+  } catch (e) { console.warn('Não foi possível remover a foto antiga:', e); }
 }
 
 // ---------- AUTENTICAÇÃO ----------
@@ -267,55 +336,84 @@ function renderAuthBox() {
   const box = $('authBox');
   if (currentUser) {
     box.innerHTML = `
-      <span class="email">${currentUser.email}</span>
+      <span class="email">${escapeHtml(currentUser.login)}</span>
       <button class="btn-ghost" id="btnSair">Sair</button>
     `;
-    $('btnSair').onclick = () => auth.signOut();
+    $('btnSair').onclick = () => {
+      localStorage.removeItem(TOKEN_KEY);
+      currentUser = null;
+      renderAuthBox();
+      renderGrid();
+    };
     $('btnAdicionar').classList.remove('hidden');
     $('loginView').classList.add('hidden');
   } else {
     box.innerHTML = `<button class="btn-ghost" id="btnEntrar">Entrar</button>`;
-    $('btnEntrar').onclick = () => {
-      $('loginView').classList.toggle('hidden');
-    };
+    $('btnEntrar').onclick = () => $('loginView').classList.toggle('hidden');
     $('btnAdicionar').classList.add('hidden');
   }
+}
+
+async function autenticarComToken(token) {
+  const res = await fetch('https://api.github.com/user', {
+    headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github+json' }
+  });
+  if (!res.ok) throw new Error('Token inválido ou expirado.');
+  const dados = await res.json();
+  return { login: dados.login, token };
 }
 
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('loginErro').textContent = '';
+  $('btnLogin').disabled = true;
+  $('btnLogin').textContent = 'Verificando...';
   try {
-    await auth.signInWithEmailAndPassword($('loginEmail').value.trim(), $('loginSenha').value);
+    const token = $('loginToken').value.trim();
+    currentUser = await autenticarComToken(token);
+    localStorage.setItem(TOKEN_KEY, token);
     $('loginView').classList.add('hidden');
+    $('loginToken').value = '';
+    renderAuthBox();
+    renderGrid();
   } catch (err) {
-    $('loginErro').textContent = 'E-mail ou senha inválidos.';
+    $('loginErro').textContent = err.message || 'Não foi possível validar o token.';
+  } finally {
+    $('btnLogin').disabled = false;
+    $('btnLogin').textContent = 'Entrar';
   }
 });
 
-if (FB_READY) {
-  auth.onAuthStateChanged((user) => {
-    currentUser = user;
-    renderAuthBox();
-    renderCardActions();
-  });
-} else {
+async function initAuth() {
+  const tokenSalvo = localStorage.getItem(TOKEN_KEY);
+  if (!tokenSalvo) { renderAuthBox(); return; }
+  try {
+    currentUser = await autenticarComToken(tokenSalvo);
+  } catch {
+    localStorage.removeItem(TOKEN_KEY);
+    currentUser = null;
+  }
   renderAuthBox();
+  renderGrid();
 }
 
 // ---------- GALERIA ----------
 
-let camisas = [];
-
-function carregarGaleria() {
-  if (!FB_READY) return;
-  db.collection('camisas').orderBy('criadoEm', 'desc').onSnapshot((snap) => {
-    camisas = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderGrid();
-  }, (err) => {
-    console.error('Erro ao carregar galeria:', err);
+async function carregarGaleria() {
+  try {
+    const res = await fetch(`${RAW_BASE}/${DATA_PATH}?_=${Date.now()}`);
+    camisas = res.ok ? await res.json() : [];
+  } catch (e) {
+    console.error('Erro ao carregar galeria:', e);
     toast('Erro ao carregar a galeria.');
-  });
+    camisas = [];
+  }
+  camisas.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+  renderGrid();
+}
+
+function urlFoto(nomeArquivo) {
+  return `${RAW_BASE}/${FOTOS_DIR}/${nomeArquivo}`;
 }
 
 function renderGrid() {
@@ -332,12 +430,12 @@ function renderGrid() {
 
   grid.innerHTML = camisas.map(c => `
     <div class="card" data-id="${c.id}">
-      <div class="foto-wrap"><img src="${c.imageUrl}" alt="${escapeHtml(c.nome)}" loading="lazy"></div>
+      <div class="foto-wrap"><img src="${urlFoto(c.imagem)}" alt="${escapeHtml(c.nome)}" loading="lazy"></div>
       <div class="info">
         <div class="nome">${escapeHtml(c.nome)}</div>
         ${c.descricao ? `<div class="desc">${escapeHtml(c.descricao)}</div>` : ''}
       </div>
-      <div class="acoes admin-only ${currentUser ? '' : 'hidden'}">
+      <div class="acoes ${currentUser ? '' : 'hidden'}">
         <button class="icon-btn" data-editar="${c.id}">Editar</button>
         <button class="icon-btn danger" data-excluir="${c.id}">Excluir</button>
       </div>
@@ -350,17 +448,6 @@ function renderGrid() {
     btn.onclick = () => excluirCamisa(btn.dataset.excluir));
 }
 
-function renderCardActions() {
-  document.querySelectorAll('.admin-only').forEach(el =>
-    el.classList.toggle('hidden', !currentUser));
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str || '';
-  return div.innerHTML;
-}
-
 // ---------- MODAL / FORMULÁRIO ----------
 
 $('btnAdicionar').onclick = () => abrirModal(null);
@@ -370,7 +457,7 @@ $('dropZone').onclick = () => $('inputFoto').click();
 
 function abrirModal(camisa) {
   editandoId = camisa ? camisa.id : null;
-  editandoStoragePath = camisa ? camisa.storagePath : null;
+  editandoImagem = camisa ? camisa.imagem : null;
   arquivoSelecionado = null;
   $('modalTitulo').textContent = camisa ? 'Editar camisa' : 'Nova camisa';
   $('inputNome').value = camisa ? camisa.nome : '';
@@ -379,7 +466,7 @@ function abrirModal(camisa) {
   $('inputFoto').value = '';
 
   if (camisa) {
-    $('previewImg').src = camisa.imageUrl;
+    $('previewImg').src = urlFoto(camisa.imagem);
     $('previewImg').classList.remove('hidden');
     $('dropPlaceholder').classList.add('hidden');
   } else {
@@ -427,9 +514,13 @@ function redimensionarImagem(file, maxLado = 1280, qualidade = 0.82) {
   });
 }
 
+function gerarNomeArquivo() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+}
+
 $('formCamisa').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!currentUser) { toast('Entre para salvar.'); return; }
+  if (!currentUser) { toast('Entre com um token para salvar.'); return; }
 
   const nome = $('inputNome').value.trim();
   const descricao = $('inputDescricao').value.trim();
@@ -443,36 +534,40 @@ $('formCamisa').addEventListener('submit', async (e) => {
   $('btnSalvar').textContent = 'Salvando...';
 
   try {
-    let imageUrl = null, storagePath = null;
+    let nomeArquivoImagem = editandoImagem;
 
     if (arquivoSelecionado) {
       const blob = await redimensionarImagem(arquivoSelecionado);
-      storagePath = `camisas/${currentUser.uid}/${Date.now()}.jpg`;
-      const ref = storage.ref(storagePath);
-      await ref.put(blob, { contentType: 'image/jpeg' });
-      imageUrl = await ref.getDownloadURL();
+      nomeArquivoImagem = gerarNomeArquivo();
+      await enviarFoto(blob, nomeArquivoImagem);
     }
 
+    const { sha, lista } = await buscarArquivoDados();
+
     if (editandoId) {
-      const dados = { nome, descricao };
-      if (imageUrl) { dados.imageUrl = imageUrl; dados.storagePath = storagePath; }
-      await db.collection('camisas').doc(editandoId).update(dados);
-      if (imageUrl && editandoStoragePath) {
-        storage.ref(editandoStoragePath).delete().catch(() => {});
+      const idx = lista.findIndex(c => c.id === editandoId);
+      if (idx !== -1) lista[idx] = { ...lista[idx], nome, descricao, imagem: nomeArquivoImagem };
+      await salvarArquivoDados(lista, sha, `editar camisa: ${nome}`);
+      if (arquivoSelecionado && editandoImagem && editandoImagem !== nomeArquivoImagem) {
+        excluirFoto(editandoImagem);
       }
       toast('Camisa atualizada.');
     } else {
-      await db.collection('camisas').add({
-        nome, descricao, imageUrl, storagePath,
-        criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
-        criadoPor: currentUser.uid
+      lista.push({
+        id: crypto.randomUUID(),
+        nome, descricao,
+        imagem: nomeArquivoImagem,
+        criadoEm: new Date().toISOString()
       });
+      await salvarArquivoDados(lista, sha, `adicionar camisa: ${nome}`);
       toast('Camisa adicionada ao acervo.');
     }
+
+    await carregarGaleria();
     fecharModal();
   } catch (err) {
     console.error(err);
-    $('formErro').textContent = 'Erro ao salvar. Tente novamente.';
+    $('formErro').textContent = err.message || 'Erro ao salvar. Tente novamente.';
   } finally {
     $('btnSalvar').disabled = false;
     $('btnSalvar').textContent = 'Salvar';
@@ -484,24 +579,22 @@ async function excluirCamisa(id) {
   if (!camisa) return;
   if (!confirm(`Excluir "${camisa.nome}" do acervo?`)) return;
   try {
-    await db.collection('camisas').doc(id).delete();
-    if (camisa.storagePath) storage.ref(camisa.storagePath).delete().catch(() => {});
+    const { sha, lista } = await buscarArquivoDados();
+    const novaLista = lista.filter(c => c.id !== id);
+    await salvarArquivoDados(novaLista, sha, `excluir camisa: ${camisa.nome}`);
+    if (camisa.imagem) excluirFoto(camisa.imagem);
+    await carregarGaleria();
     toast('Camisa excluída.');
   } catch (err) {
     console.error(err);
-    toast('Erro ao excluir.');
+    toast(err.message || 'Erro ao excluir.');
   }
 }
 
 // ---------- INIT ----------
 
-if (!FB_READY) {
-  $('grid').innerHTML = '';
-  $('vazio').classList.remove('hidden');
-  $('vazio').querySelector('p').textContent = 'Firebase ainda não configurado — edite FIREBASE_CONFIG em index.html.';
-} else {
-  carregarGaleria();
-}
+initAuth();
+carregarGaleria();
 </script>
 </body>
 </html>
