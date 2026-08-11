@@ -102,7 +102,6 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
 .field label{display:block;font-size:.8rem;font-weight:600;margin-bottom:5px;color:var(--preto2)}
 .field input{
   width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:9px;font-size:.9rem;
-  font-family:ui-monospace,Consolas,monospace;
 }
 .field input:focus{outline:2px solid var(--preto);outline-offset:1px}
 .erro{color:#c0392b;font-size:.8rem;min-height:18px;margin-bottom:8px}
@@ -159,11 +158,15 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
     <div class="login-wrap">
       <div class="emoji">🔒</div>
       <h2>Área do colecionador</h2>
-      <p>Cole abaixo um token de acesso do GitHub para adicionar ou editar camisas. A galeria abaixo é pública para qualquer visitante.</p>
+      <p>Entre com e-mail e senha para adicionar ou editar camisas. A galeria abaixo é pública para qualquer visitante.</p>
       <form id="loginForm">
         <div class="field">
-          <label>Token de acesso (GitHub)</label>
-          <input type="password" id="loginToken" placeholder="github_pat_..." required autocomplete="off">
+          <label>E-mail</label>
+          <input type="email" id="loginEmail" required autocomplete="username">
+        </div>
+        <div class="field">
+          <label>Senha</label>
+          <input type="password" id="loginSenha" required autocomplete="current-password">
         </div>
         <div class="erro" id="loginErro"></div>
         <button type="submit" class="btn-primary" id="btnLogin">Entrar</button>
@@ -220,19 +223,22 @@ main{max-width:1100px;margin:0 auto;padding:28px 20px 60px}
 
 <script>
 // ============================================================
-// Repositório usado como banco de dados (data/camisas.json + fotos/)
+// Leitura pública direto do repositório; escrita via backend (Worker)
+// que guarda o token do GitHub em segredo. Troque WORKER_URL pela URL
+// do seu Worker depois de implantar (veja README.md).
 // ============================================================
 const GITHUB_OWNER = "Diegoeduardosc";
 const GITHUB_REPO = "acervo-camisas-atletico";
 const GITHUB_BRANCH = "main";
 const DATA_PATH = "data/camisas.json";
 const FOTOS_DIR = "fotos";
+const WORKER_URL = "https://SEU-WORKER.SEU-SUBDOMINIO.workers.dev";
 
 const RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
-const API_BASE = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}`;
-const TOKEN_KEY = "acervo_gh_token";
+const WORKER_READY = !WORKER_URL.includes("SEU-WORKER");
+const SESSAO_KEY = "acervo_sessao";
 
-let currentUser = null; // { login, token }
+let currentUser = null; // { email, token }
 let camisas = [];
 let arquivoSelecionado = null;
 let editandoId = null;
@@ -277,56 +283,47 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ---------- API do GitHub ----------
+// ---------- API do backend (Worker) ----------
 
-async function ghFetch(path, options = {}) {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    ...(options.headers || {})
-  };
-  if (currentUser) headers.Authorization = `token ${currentUser.token}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+async function chamarAPI(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (currentUser) headers.Authorization = `Bearer ${currentUser.token}`;
+  const res = await fetch(`${WORKER_URL}${path}`, { ...options, headers });
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `Erro ${res.status} na API do GitHub`);
+    if (res.status === 401) encerrarSessao();
+    throw new Error(body.erro || `Erro ${res.status} no servidor`);
   }
-  return res.status === 204 ? null : res.json();
+  return body;
 }
 
 async function buscarArquivoDados() {
-  const dado = await ghFetch(`/contents/${DATA_PATH}?ref=${GITHUB_BRANCH}`);
-  return { sha: dado.sha, lista: JSON.parse(base64ParaTexto(dado.content)) };
+  const dado = await chamarAPI('/api/estado');
+  return { sha: dado.sha, lista: JSON.parse(base64ParaTexto(dado.conteudo)) };
 }
 
 async function salvarArquivoDados(lista, sha, mensagem) {
-  return ghFetch(`/contents/${DATA_PATH}`, {
+  return chamarAPI('/api/dados', {
     method: 'PUT',
     body: JSON.stringify({
-      message: mensagem,
-      content: textoParaBase64(JSON.stringify(lista, null, 2)),
-      sha, branch: GITHUB_BRANCH
+      mensagem,
+      conteudo: textoParaBase64(JSON.stringify(lista, null, 2)),
+      sha
     })
   });
 }
 
 async function enviarFoto(blob, nomeArquivo) {
   const conteudo = await blobParaBase64(blob);
-  await ghFetch(`/contents/${FOTOS_DIR}/${nomeArquivo}`, {
+  await chamarAPI(`/api/fotos/${encodeURIComponent(nomeArquivo)}`, {
     method: 'PUT',
-    body: JSON.stringify({
-      message: `upload foto: ${nomeArquivo}`,
-      content: conteudo, branch: GITHUB_BRANCH
-    })
+    body: JSON.stringify({ conteudo, mensagem: `upload foto: ${nomeArquivo}` })
   });
 }
 
 async function excluirFoto(nomeArquivo) {
   try {
-    const meta = await ghFetch(`/contents/${FOTOS_DIR}/${nomeArquivo}?ref=${GITHUB_BRANCH}`);
-    await ghFetch(`/contents/${FOTOS_DIR}/${nomeArquivo}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ message: `remover foto: ${nomeArquivo}`, sha: meta.sha, branch: GITHUB_BRANCH })
-    });
+    await chamarAPI(`/api/fotos/${encodeURIComponent(nomeArquivo)}`, { method: 'DELETE' });
   } catch (e) { console.warn('Não foi possível remover a foto antiga:', e); }
 }
 
@@ -336,15 +333,10 @@ function renderAuthBox() {
   const box = $('authBox');
   if (currentUser) {
     box.innerHTML = `
-      <span class="email">${escapeHtml(currentUser.login)}</span>
+      <span class="email">${escapeHtml(currentUser.email)}</span>
       <button class="btn-ghost" id="btnSair">Sair</button>
     `;
-    $('btnSair').onclick = () => {
-      localStorage.removeItem(TOKEN_KEY);
-      currentUser = null;
-      renderAuthBox();
-      renderGrid();
-    };
+    $('btnSair').onclick = () => { encerrarSessao(); renderGrid(); };
     $('btnAdicionar').classList.remove('hidden');
     $('loginView').classList.add('hidden');
   } else {
@@ -354,48 +346,66 @@ function renderAuthBox() {
   }
 }
 
-async function autenticarComToken(token) {
-  const res = await fetch('https://api.github.com/user', {
-    headers: { Authorization: `token ${token}`, Accept: 'application/vnd.github+json' }
-  });
-  if (!res.ok) throw new Error('Token inválido ou expirado.');
-  const dados = await res.json();
-  return { login: dados.login, token };
+function decodificarPayloadJWT(token) {
+  try {
+    const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(base64ParaTexto(b64));
+  } catch { return null; }
+}
+
+function salvarSessao(sessao) {
+  currentUser = sessao;
+  localStorage.setItem(SESSAO_KEY, JSON.stringify(sessao));
+  renderAuthBox();
+}
+
+function encerrarSessao() {
+  currentUser = null;
+  localStorage.removeItem(SESSAO_KEY);
+  renderAuthBox();
+}
+
+function initAuth() {
+  const salva = localStorage.getItem(SESSAO_KEY);
+  if (!salva) { renderAuthBox(); return; }
+  const sessao = JSON.parse(salva);
+  const payload = decodificarPayloadJWT(sessao.token);
+  if (!payload || (payload.exp && Date.now() / 1000 > payload.exp)) {
+    localStorage.removeItem(SESSAO_KEY);
+    renderAuthBox();
+    return;
+  }
+  currentUser = sessao;
+  renderAuthBox();
 }
 
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   $('loginErro').textContent = '';
+  if (!WORKER_READY) { $('loginErro').textContent = 'Backend ainda não configurado (WORKER_URL em index.html).'; return; }
   $('btnLogin').disabled = true;
-  $('btnLogin').textContent = 'Verificando...';
+  $('btnLogin').textContent = 'Entrando...';
   try {
-    const token = $('loginToken').value.trim();
-    currentUser = await autenticarComToken(token);
-    localStorage.setItem(TOKEN_KEY, token);
+    const email = $('loginEmail').value.trim();
+    const senha = $('loginSenha').value;
+    const res = await fetch(`${WORKER_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, senha })
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.erro || 'Não foi possível entrar.');
+    salvarSessao({ token: body.token, email: body.email });
     $('loginView').classList.add('hidden');
-    $('loginToken').value = '';
-    renderAuthBox();
+    $('loginForm').reset();
     renderGrid();
   } catch (err) {
-    $('loginErro').textContent = err.message || 'Não foi possível validar o token.';
+    $('loginErro').textContent = err.message;
   } finally {
     $('btnLogin').disabled = false;
     $('btnLogin').textContent = 'Entrar';
   }
 });
-
-async function initAuth() {
-  const tokenSalvo = localStorage.getItem(TOKEN_KEY);
-  if (!tokenSalvo) { renderAuthBox(); return; }
-  try {
-    currentUser = await autenticarComToken(tokenSalvo);
-  } catch {
-    localStorage.removeItem(TOKEN_KEY);
-    currentUser = null;
-  }
-  renderAuthBox();
-  renderGrid();
-}
 
 // ---------- GALERIA ----------
 
@@ -592,6 +602,10 @@ async function excluirCamisa(id) {
 }
 
 // ---------- INIT ----------
+
+if (!WORKER_READY) {
+  console.warn('Backend ainda não configurado. Preencha WORKER_URL em index.html (veja README.md).');
+}
 
 initAuth();
 carregarGaleria();

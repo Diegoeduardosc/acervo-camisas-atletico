@@ -1,0 +1,11 @@
+name = "acervo-camisas-atletico"
+main = "index.js"
+compatibility_date = "2024-11-01"
+
+# Segredos (não vão aqui — configure em Settings > Variables no dashboard,
+# ou via `wrangler secret put NOME`):
+#   GITHUB_TOKEN    -> fine-grained PAT com "Contents: Read and write" só deste repositório
+#   JWT_SECRET      -> qualquer string longa e aleatória
+#   ADMIN_EMAIL     -> e-mail de quem pode editar o acervo
+#   ADMIN_SENHA     -> senha de quem pode editar o acervo
+#   ALLOWED_ORIGIN  -> https://diegoeduardosc.github.io (opcional, já é o padrão)
