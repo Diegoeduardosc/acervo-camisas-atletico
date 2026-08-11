@@ -272,7 +272,9 @@ function textoParaBase64(str) {
 }
 
 function base64ParaTexto(b64) {
-  const binary = atob(b64.replace(/\n/g, ''));
+  let limpo = b64.replace(/\n/g, '');
+  while (limpo.length % 4) limpo += '=';
+  const binary = atob(limpo);
   const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
   return new TextDecoder().decode(bytes);
 }

@@ -18,7 +18,7 @@ function base64url(bytes) {
 }
 
 function base64urlDecode(str) {
-  str = str.replace(/-/g, "+").replace(/\//g, "/");
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
   while (str.length % 4) str += "=";
   return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
 }
